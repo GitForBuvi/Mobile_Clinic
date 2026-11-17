@@ -24,7 +24,16 @@ try:  # pick up GOOGLE_CLOUD_PROJECT / COUNTY_NAME from agent/.env when running 
 except ImportError:
     pass
 
-app = get_fast_api_app(agents_dir=AGENTS_DIR, web=True)
+# Cloud Shell Web Preview and Cloud Run sit behind a proxy, so the browser's Origin
+# (https://8080-cs-....cloudshell.dev) doesn't match the Host the server sees. ADK's
+# security check then answers 403 "Forbidden: origin not allowed". Allow those origins.
+ALLOW_ORIGINS = os.environ.get(
+    "ALLOW_ORIGINS",
+    r"regex:https://.*\.cloudshell\.dev,regex:https://.*\.run\.app,http://localhost:8080",
+).split(",")
+
+app = get_fast_api_app(agents_dir=AGENTS_DIR, web=True, host="0.0.0.0",
+                       allow_origins=ALLOW_ORIGINS)
 
 # Replace ADK's "/" redirect with our page.
 app.router.routes = [r for r in app.router.routes if getattr(r, "path", None) != "/"]
