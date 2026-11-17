@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mobile Clinic Broker</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f5f1; --card:#ffffff; --ink:#1d2327; --muted:#5f6b72; --line:#e3e1da;
+    --teal:#0f6e66; --teal-soft:#e2f0ee; --amber:#b25e00; --amber-soft:#fbeedd;
+    --red:#a3271f; --red-soft:#fbe7e5; --blue:#2b5a9e; --blue-soft:#e6eef9;
+    --radius:10px; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
+  header{display:flex;align-items:center;gap:14px;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--card)}
+  header h1{font-size:18px;margin:0;font-weight:650;letter-spacing:-.01em}
+  header .county{font-size:13px;color:var(--teal);background:var(--teal-soft);padding:3px 10px;border-radius:99px;font-weight:600}
+  header .links{margin-left:auto;font-size:13px}
+  header a{color:var(--muted)}
+  main{display:grid;grid-template-columns:360px 1fr;gap:18px;padding:18px 24px;max-width:1500px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px;font-weight:650}
+  textarea{width:100%;min-height:76px;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;resize:vertical}
+  .presets{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+  .presets button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:#fafaf7;border-radius:99px;padding:4px 10px;cursor:pointer}
+  .presets button:hover{border-color:var(--teal);color:var(--teal)}
+  .run{width:100%;font:inherit;font-weight:650;background:var(--teal);color:#fff;border:0;border-radius:8px;padding:10px;cursor:pointer}
+  .run:disabled{opacity:.55;cursor:progress}
+  .steps{list-style:none;margin:0;padding:0}
+  .steps li{display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:14px}
+  .steps li:last-child{border-bottom:0}
+  .dot{width:10px;height:10px;border-radius:50%;background:#cfccc3;margin-top:6px;flex:none}
+  .running .dot{background:var(--amber);box-shadow:0 0 0 4px var(--amber-soft);animation:pulse 1s infinite}
+  .done .dot{background:var(--teal)}
+  .rejected .dot{background:var(--red)}
+  @keyframes pulse{50%{box-shadow:0 0 0 7px var(--amber-soft)}}
+  .steps .sub{display:block;font-size:12px;color:var(--muted)}
+  .steps .scale{font-size:11px;font-family:var(--mono);color:var(--blue);background:var(--blue-soft);padding:1px 6px;border-radius:4px;margin-left:4px}
+  .log{font-family:var(--mono);font-size:12px;max-height:230px;overflow:auto;background:#fbfbf9;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:10px}
+  .log div{padding:2px 0;border-bottom:1px solid #f0eee8}
+  .log .who{color:var(--teal);font-weight:600}
+  .log .rej{color:var(--red);font-weight:600}
+  .right{display:flex;flex-direction:column;gap:18px;min-width:0}
+  .banner{display:none;border-radius:var(--radius);padding:12px 16px;border:1px solid}
+  .banner.show{display:block}
+  .banner.reject{background:var(--red-soft);border-color:#efc2bd;color:var(--red)}
+  .banner.approve{background:var(--teal-soft);border-color:#bfdcd8;color:var(--teal)}
+  .banner b{display:block;margin-bottom:2px}
+  .top{display:grid;grid-template-columns:1.1fr 1fr;gap:18px}
+  #map{height:340px;border-radius:8px;border:1px solid var(--line)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:650}
+  td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tag{font-size:10.5px;font-family:var(--mono);color:var(--blue);background:var(--blue-soft);padding:0 5px;border-radius:4px}
+  .rank{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--teal);color:#fff;font-weight:700;font-size:12px}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-4px 0 14px}
+  .tabs button{font:inherit;font-size:14px;background:none;border:0;padding:8px 12px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent}
+  .tabs button.on{color:var(--ink);border-bottom-color:var(--teal);font-weight:600}
+  .pane{display:none}.pane.on{display:block}
+  .md{max-width:860px}
+  .md h1,.md h2,.md h3{line-height:1.25;text-transform:none;letter-spacing:0;color:var(--ink)}.md h2{font-size:18px;margin:22px 0 8px;font-weight:650}
+  .md table{margin:10px 0}
+  .bars .row{display:grid;grid-template-columns:110px 1fr 54px;gap:8px;align-items:center;font-size:13px;margin:6px 0}
+  .bar{position:relative;height:18px;background:#f1efe9;border-radius:4px;overflow:hidden}
+  .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+  .bar .p{background:var(--teal);height:9px}
+  .bar .c{background:#b9b5aa;top:9px;height:9px}
+  .legend{font-size:12px;color:var(--muted);display:flex;gap:14px;margin-bottom:8px}
+  .legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  .legend .lp::before{background:var(--teal)}.legend .lc::before{background:#b9b5aa}
+  .kv{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:12px 0}
+  .kv div{background:#fafaf7;border:1px solid var(--line);border-radius:8px;padding:10px}
+  .kv b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+  .kv span{font-size:12px;color:var(--muted)}
+  .msg{white-space:pre-wrap;background:#fffdf6;border:1px solid #efe6cc;border-radius:8px;padding:16px;font-size:15px}
+  pre.state{font-family:var(--mono);font-size:12px;background:#fbfbf9;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:460px;overflow:auto}
+  .statekeys{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .statekeys button{font-family:var(--mono);font-size:12px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer}
+  .statekeys button.on{border-color:var(--teal);background:var(--teal-soft)}
+  .flow{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+  .empty{color:var(--muted);font-size:14px;padding:20px 0}
+  .note{font-size:12px;color:var(--muted);margin-top:8px}
+  @media (max-width:1050px){main{grid-template-columns:1fr}.top{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Mobile Clinic Broker</h1>
+  <span class="county" id="county">County</span>
+  <div class="links"><a href="/dev-ui" target="_blank">ADK debug UI ↗</a></div>
+</header>
+
+<main>
+  <!-- LEFT: ask + live pipeline -->
+  <section style="display:flex;flex-direction:column;gap:18px">
+    <div class="card">
+      <h2>Ask the planner</h2>
+      <textarea id="prompt">Plan four Saturday stops for the mobile clinic van, and explain them.</textarea>
+      <div class="presets">
+        <button data-p="Plan four Saturday stops for the mobile clinic van, and explain them.">Balanced plan</button>
+        <button data-p="Plan four Saturday stops. Prioritize neighborhoods with the most uninsured adults.">Uninsured first</button>
+        <button data-p="Plan four Saturday stops. Prioritize people who cannot travel: no vehicle, mobility limits, over 65.">Can't travel first</button>
+        <button data-p="Plan six Saturday stops, at least 5 km apart.">6 stops, spread out</button>
+      </div>
+      <button class="run" id="run">Plan the van's route</button>
+      <p class="note">The van plans <b>where</b> to park. It does not decide who to treat.</p>
+    </div>
+
+    <div class="card">
+      <h2>Agents at work</h2>
+      <ul class="steps" id="steps"></ul>
+      <div class="log" id="log"><div class="empty" style="padding:4px">Tool calls appear here.</div></div>
+    </div>
+  </section>
+
+  <!-- RIGHT: results -->
+  <section class="right">
+    <div class="banner" id="banner"></div>
+
+    <div class="top">
+      <div class="card">
+        <h2>Where the van goes</h2>
+        <div id="map"></div>
+        <p class="note">Pins are census-tract centres <span class="tag">tract</span>. Distances are straight lines to the nearest clinic <span class="tag">facility</span>, not travel time.</p>
+      </div>
+      <div class="card">
+        <h2>Ranked stops</h2>
+        <div id="stops"><div class="empty">Run a plan to see stops.</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="tabs" id="tabs">
+        <button data-t="plan" class="on">Clinic Plan</button>
+        <button data-t="audit">Equity audit</button>
+        <button data-t="msg">Neighborhood message</button>
+        <button data-t="ctx">Context</button>
+        <button data-t="state">Shared state</button>
+      </div>
+      <div class="pane on" id="p-plan"><div class="md" id="plan"><div class="empty">The four-section Clinic Plan appears here when all agents finish.</div></div></div>
+      <div class="pane" id="p-audit"><div id="audit"><div class="empty">The equity auditor's findings appear here.</div></div></div>
+      <div class="pane" id="p-msg"><div id="msg"><div class="empty">The communicator's flyer and text message appear here.</div></div></div>
+      <div class="pane" id="p-ctx"><div id="ctx"><div class="empty">Region, grid and shortage-area context from the scouts.</div></div></div>
+      <div class="pane" id="p-state">
+        <p class="flow"><b>ranked_tracts</b>: written by planner → read by equity_auditor, safety_reviewer, communicator.
+          <b>revision_request</b>: written by equity_auditor → read by planner.</p>
+        <div class="statekeys" id="statekeys"></div>
+        <pre class="state" id="statejson">{}</pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const AGENTS = [
+  {id:"disease_scout",   label:"Disease scout",   sub:"Respiratory trend", scale:"region"},
+  {id:"shortage_scout",  label:"Shortage scout",  sub:"HRSA designations", scale:"area"},
+  {id:"air_scout",       label:"Air scout",       sub:"PM2.5 context",     scale:"12 km grid"},
+  {id:"planner",         label:"Planner",         sub:"Ranks tracts by need, never sees race", scale:"tract"},
+  {id:"equity_auditor",  label:"Equity auditor",  sub:"Own context, audits the plan, can reject"},
+  {id:"safety_reviewer", label:"Safety reviewer", sub:"Hedges, cites scale, removes medical advice"},
+  {id:"communicator",    label:"Communicator",    sub:"Plain English + Spanish, no statistics"},
+  {id:"plan_writer",     label:"Plan writer",     sub:"Assembles the Clinic Plan"},
+];
+let APP = "clinic_agent", state = {}, map, layer, finalText = "", currentKey = "ranked_tracts";
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const md = s => DOMPurify.sanitize(marked.parse(s || ""));
+
+function drawSteps(){
+  $("#steps").innerHTML = AGENTS.map(a =>
+    `<li id="s-${a.id}"><span class="dot"></span><div>${a.label}${a.scale?`<span class="scale">${a.scale}</span>`:""}
+     <span class="sub" id="ss-${a.id}">${a.sub}</span></div></li>`).join("");
+}
+function setStep(id, cls, sub){
+  const li = document.getElementById("s-"+id); if(!li) return;
+  if (cls === "running"){ document.querySelectorAll(".steps li.running").forEach(x => { if(x!==li && !x.id.includes("scout")) { x.classList.remove("running"); x.classList.add("done"); }}); }
+  li.classList.remove("running","done","rejected"); li.classList.add(cls);
+  if (sub) document.getElementById("ss-"+id).textContent = sub;
+}
+function log(who, text, cls=""){
+  const box = $("#log"); if (box.querySelector(".empty")) box.innerHTML = "";
+  box.insertAdjacentHTML("beforeend", `<div class="${cls}"><span class="who">${esc(who)}</span> ${esc(text)}</div>`);
+  box.scrollTop = box.scrollHeight;
+}
+
+function initMap(){
+  map = L.map("map", {scrollWheelZoom:false}).setView([33.75,-84.39], 10);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {maxZoom:18, attribution:"© OpenStreetMap"}).addTo(map);
+  layer = L.layerGroup().addTo(map);
+}
+
+function renderStops(){
+  const plan = state.ranked_tracts; if (!plan || !plan.stops) return;
+  const s = plan.stops;
+  layer.clearLayers(); const pts = [];
+  s.forEach(st => {
+    if (st.latitude == null) return;
+    const icon = L.divIcon({className:"", html:`<span class="rank">${st.rank}</span>`, iconSize:[22,22]});
+    L.marker([st.latitude, st.longitude], {icon}).addTo(layer)
+      .bindPopup(`<b>Stop ${st.rank}</b><br>Tract ${st.geo_id}<br>${st.total_pop?.toLocaleString()} residents`);
+    pts.push([st.latitude, st.longitude]);
+  });
+  if (pts.length) map.fitBounds(pts, {padding:[40,40], maxZoom:13});
+  const v = (st,k) => st.evidence?.[k]?.value;
+  $("#stops").innerHTML = `<table><tr><th>#</th><th>Tract</th><th>Uninsured<br><span class="tag">tract</span></th>
+    <th>No car<br><span class="tag">tract</span></th><th>Km to safety-net<br><span class="tag">facility</span></th></tr>` +
+    s.map(st => `<tr><td><span class="rank">${st.rank}</span></td>
+      <td>${esc(st.geo_id)}<br><span class="note" style="margin:0">${st.total_pop?.toLocaleString() ?? "?"} people · score ${st.need_score}</span>
+      ${st.missing_inputs?.length ? `<br><span class="note" style="color:var(--red)">missing: ${esc(st.missing_inputs.join(", "))}</span>`:""}</td>
+      <td class="num">${v(st,"pct_uninsured_18_64") ?? "–"}%</td>
+      <td class="num">${v(st,"pct_no_vehicle") ?? "–"}%</td>
+      <td class="num">${v(st,"km_to_safety_net") ?? "–"} km</td></tr>`).join("") + `</table>
+    <p class="note">Weights (uninsured, chronic, can't travel, distance): ${esc(JSON.stringify(plan.method?.weights_uninsured_chronic_cantreach_distance))}
+    · spacing ≥ ${plan.method?.min_spacing_km} km${plan.method?.excluded?.length ? " · excluded "+esc(plan.method.excluded.join(", ")):""}</p>`;
+}
+
+function renderAudit(){
+  const a = state.audit_findings; if (!a) return;
+  const p = a.population_share_pct || {}, rec = p.recommended_tracts || {}, cty = p.county || {};
+  const max = Math.max(1, ...Object.values(rec).concat(Object.values(cty)).map(x => x || 0));
+  const n = a.need_check || {};
+  $("#audit").innerHTML = `
+    <div class="kv">
+      <div><b>${n.recommended_mean_uninsured ?? "–"}% <small style="font-size:13px;color:var(--muted)">vs ${n.county_mean_uninsured ?? "–"}%</small></b><span>Uninsured adults: recommended tracts vs county <span class="tag">tract</span></span></div>
+      <div><b>${n.recommended_mean_km_to_safety_net ?? "–"} km <small style="font-size:13px;color:var(--muted)">vs ${n.county_mean_km_to_safety_net ?? "–"} km</small></b><span>Distance to a safety-net clinic <span class="tag">facility</span></span></div>
+    </div>
+    <h3 style="font-size:15px;margin:16px 0 4px">Who this plan lands on</h3>
+    <div class="legend"><span class="lp">Recommended tracts</span><span class="lc">Whole county</span></div>
+    <div class="bars">${Object.keys(rec).map(k => `
+      <div class="row"><span style="text-transform:capitalize">${esc(k)}</span>
+        <div class="bar"><i class="p" style="width:${(rec[k]||0)/max*100}%"></i><i class="c" style="width:${(cty[k]||0)/max*100}%"></i></div>
+        <span class="num" style="font-size:12px">${rec[k] ?? "–"} / ${cty[k] ?? "–"}</span></div>`).join("")}</div>
+    <p class="note">Race and ethnicity were never inputs to the planner. The auditor sees them only to check the output.
+      ${esc(a.acs_join || "")} (${esc(a.acs_table || "")}). ${esc(a.scale_note || "")}</p>
+    ${state.audit_verdict ? `<h3 style="font-size:15px;margin:16px 0 4px">Auditor's verdict</h3><div class="md">${md(state.audit_verdict)}</div>` : ""}
+    ${(state.rejections||[]).length ? `<h3 style="font-size:15px;margin:16px 0 4px">Rejected along the way</h3>` +
+      state.rejections.map((r,i)=>`<p style="margin:4px 0;color:var(--red)">Round ${i+1}: ${esc(r.reason)}</p>`).join("") : ""}`;
+}
+
+function renderText(){
+  if (state.neighborhood_message) $("#msg").innerHTML = `<div class="msg">${md(state.neighborhood_message)}</div>`;
+  const ctx = [["Disease trend","region","disease_context"],["Shortage designations","area / facility","shortage_context"],["Air quality","12 km grid","air_context"]]
+    .filter(c => state[c[2]]);
+  if (ctx.length) $("#ctx").innerHTML = ctx.map(c => `<h3 style="font-size:15px;margin:10px 0 4px">${c[0]} <span class="tag">${c[1]}</span></h3><div class="md">${md(state[c[2]])}</div>`).join("");
+  if (finalText) $("#plan").innerHTML = md(finalText);
+}
+
+function renderState(){
+  const keys = ["ranked_tracts","revision_request","rejections","audit_findings","audit_verdict","disease_context","shortage_context","air_context","reviewed_plan","neighborhood_message"]
+    .filter(k => state[k] != null && !(Array.isArray(state[k]) && !state[k].length));
+  $("#statekeys").innerHTML = keys.map(k => `<button class="${k===currentKey?"on":""}" data-k="${k}">${k}</button>`).join("");
+  $("#statejson").textContent = JSON.stringify(state[currentKey] ?? null, null, 2);
+}
+
+function banner(kind, title, body){
+  const b = $("#banner"); b.className = "banner show " + kind;
+  b.innerHTML = `<b>${esc(title)}</b>${esc(body)}`;
+}
+
+function onEvent(ev){
+  const who = ev.author; if (!who || who === "user") return;
+  if (AGENTS.find(a => a.id === who)) setStep(who, "running");
+  for (const part of (ev.content?.parts || [])){
+    if (part.functionCall){
+      const args = JSON.stringify(part.functionCall.args || {});
+      log(who, `→ ${part.functionCall.name}(${args.length > 90 ? args.slice(0,90)+"…" : args})`);
+      if (part.functionCall.name === "request_revision"){
+        setStep("equity_auditor", "rejected", "Rejected the plan, sent it back");
+        log(who, "✗ plan rejected: " + (part.functionCall.args?.reason || ""), "rej");
+        banner("reject", "The equity auditor rejected the planner's first answer", " " + (part.functionCall.args?.reason || ""));
+      }
+      if (part.functionCall.name === "approve_plan"){
+        const rej = state.rejections || [];
+        setStep("equity_auditor", "done", rej.length ? `Rejected ${rej.length}×, then approved` : "Approved the plan");
+        banner("approve", rej.length ? `Approved after ${rej.length} revision(s). The first answer was rejected:` : "The equity auditor approved the plan on the first try.",
+               rej.length ? " " + rej[0].reason : "");
+      }
+    }
+    if (part.text && who === "plan_writer") finalText += part.text;
+  }
+  const delta = ev.actions?.stateDelta || ev.actions?.state_delta || {};
+  if (Object.keys(delta).length){
+    Object.assign(state, delta);
+    Object.keys(delta).forEach(k => { if (delta[k] != null) log(who, `writes state["${k}"]`); });
+    renderStops(); renderAudit(); renderText(); renderState();
+  }
+}
+
+async function run(){
+  const btn = $("#run"); btn.disabled = true; btn.textContent = "Agents working… (about a minute)";
+  state = {}; finalText = ""; drawSteps(); $("#log").innerHTML = ""; $("#banner").className = "banner";
+  ["disease_scout","shortage_scout","air_scout"].forEach(id => setStep(id, "running"));
+  try{
+    const user = "web-user";
+    const ses = await (await fetch(`/apps/${APP}/users/${user}/sessions`, {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"})).json();
+    const res = await fetch("/run_sse", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({appName:APP, userId:user, sessionId:ses.id, streaming:false,
+        newMessage:{role:"user", parts:[{text: $("#prompt").value}]}})});
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    const reader = res.body.getReader(), dec = new TextDecoder(); let buf = "";
+    while (true){
+      const {value, done} = await reader.read(); if (done) break;
+      buf += dec.decode(value, {stream:true});
+      let i; while ((i = buf.indexOf("\n\n")) >= 0){
+        const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+        const line = chunk.split("\n").find(l => l.startsWith("data:")); if (!line) continue;
+        try {
+          const ev = JSON.parse(line.slice(5));
+          if (ev.error) { log("error", ev.error, "rej"); continue; }
+          onEvent(ev);
+        } catch(e){ /* partial line */ }
+      }
+    }
+    // Final sync with server-side state, in case any delta was missed.
+    const fin = await (await fetch(`/apps/${APP}/users/${user}/sessions/${ses.id}`)).json();
+    Object.assign(state, fin.state || {});
+    if (!finalText && state.reviewed_plan) finalText = state.reviewed_plan;
+    AGENTS.forEach(a => { const li = document.getElementById("s-"+a.id);
+      if (li && !li.classList.contains("rejected")) { li.classList.remove("running"); li.classList.add("done"); } });
+    renderStops(); renderAudit(); renderText(); renderState();
+    log("system", "done ✓");
+  } catch(e){
+    log("error", e.message, "rej");
+    banner("reject", "Something went wrong", " " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Plan the van's route";
+  }
+}
+
+document.querySelectorAll(".presets button").forEach(b => b.onclick = () => { $("#prompt").value = b.dataset.p; });
+$("#tabs").onclick = e => { const t = e.target.dataset.t; if (!t) return;
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.id === "p-"+t)); };
+$("#statekeys").onclick = e => { const k = e.target.dataset.k; if (k){ currentKey = k; renderState(); } };
+$("#run").onclick = run;
+
+fetch("/ui-config").then(r => r.json()).then(c => { APP = c.app; $("#county").textContent = c.county + " County"; }).catch(()=>{});
+drawSteps(); initMap();
+</script>
+</body>
+</html>
